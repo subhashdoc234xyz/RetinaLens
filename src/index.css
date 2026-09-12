@@ -1,0 +1,83 @@
+@import "tailwindcss";
+
+@layer base {
+  html, body {
+    margin: 0;
+    padding: 0;
+    background-color: #0e1321;
+    color: #dee2f6;
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  }
+  
+  h1, h2, h3, h4, .font-heading, .font-space {
+    font-family: 'Space Grotesk', system-ui, -apple-system, sans-serif;
+  }
+
+  code, pre, .font-mono {
+    font-family: 'JetBrains Mono', monospace, monospace;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(6, 13, 35, 0.6);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(59, 73, 75, 0.8);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 240, 255, 0.5);
+}
+
+/* Macro iris breathing animation */
+@keyframes iris-breathe {
+  0%, 100% {
+    transform: scale(1.0);
+    filter: brightness(0.96) contrast(1.0);
+  }
+  50% {
+    transform: scale(1.045);
+    filter: brightness(1.12) contrast(1.06);
+  }
+}
+
+.animate-iris-breathe {
+  animation: iris-breathe 6.4s ease-in-out infinite;
+}
+
+/* Cyan liquid pulse */
+@keyframes cyan-glow {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(0, 240, 255, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 28px rgba(0, 240, 255, 0.65);
+  }
+}
+
+.glow-cyan {
+  animation: cyan-glow 3s ease-in-out infinite;
+}
+
+/* Glassmorphism helpers */
+.glass-panel {
+  background: rgba(11, 21, 54, 0.72);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(56, 189, 248, 0.18);
+}
+
+.glass-card-hover {
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-card-hover:hover {
+  border-color: rgba(0, 240, 255, 0.45);
+  box-shadow: 0 12px 36px -4px rgba(0, 0, 0, 0.7), 0 0 20px rgba(0, 240, 255, 0.2);
+  transform: translateY(-2px);
+}

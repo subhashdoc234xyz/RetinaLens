@@ -1,0 +1,6 @@
+{
+  "name": "RetinaLens",
+  "description": "Explainable AI for Diabetic Retinopathy Screening in Rural Clinics with Liquid Glass Clinician Portal and Edge Telemetry.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
