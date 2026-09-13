@@ -63,6 +63,7 @@ export interface ClinicianUser {
   clinicName?: string;
   isGuest: boolean;
   createdAt: string;
+  avatarUrl?: string;
 }
 
 export interface ModelEndpointConfig {

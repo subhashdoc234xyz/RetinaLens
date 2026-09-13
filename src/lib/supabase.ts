@@ -19,11 +19,13 @@ export function getSupabaseConfig(): { url: string; anonKey: string; isConfigure
 export function getSupabase(): SupabaseClient | null {
   const { url, anonKey, isConfigured } = getSupabaseConfig();
   if (!isConfigured) {
+    console.warn('[RetinaLens] Supabase NOT configured. URL:', url ? '✓' : '✗', 'AnonKey:', anonKey ? '✓' : '✗');
     return null;
   }
 
   if (!supabaseClient) {
     try {
+      console.log('[RetinaLens] Initializing Supabase client with URL:', url);
       supabaseClient = createClient(url, anonKey, {
         auth: {
           persistSession: true,
@@ -31,6 +33,7 @@ export function getSupabase(): SupabaseClient | null {
           detectSessionInUrl: true,
         },
       });
+      console.log('[RetinaLens] Supabase client created successfully');
     } catch (err) {
       console.warn('Could not initialize Supabase client:', err);
       return null;

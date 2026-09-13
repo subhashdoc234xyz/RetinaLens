@@ -6,6 +6,7 @@ import {
   getUserScans,
   deleteUserScan,
 } from './lib/storage';
+import { getSupabase } from './lib/supabase';
 import { LandingHero } from './components/LandingHero';
 import { AuthView } from './components/AuthView';
 import { Sidebar } from './components/Sidebar';
@@ -26,6 +27,50 @@ export default function App() {
     hasGemini: false,
     engine: 'Clinical Edge Standby',
   });
+
+  // Listen for Supabase auth state changes (handles OAuth redirect callback)
+  useEffect(() => {
+    const supabase = getSupabase();
+    if (!supabase) return;
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (event === 'SIGNED_IN' && session?.user) {
+          // Only set user if we don't already have one (avoids overwriting on every token refresh)
+          const existing = getCurrentUser();
+          if (!existing || existing.id !== session.user.id) {
+            const oauthUser: ClinicianUser = {
+              id: session.user.id,
+              email: session.user.email || '',
+              displayName:
+                session.user.user_metadata?.full_name ||
+                session.user.user_metadata?.name ||
+                session.user.email?.split('@')[0] ||
+                'Clinician',
+              clinicId: session.user.user_metadata?.clinic_id || 'RHU-04',
+              clinicName: 'Rural Health Ophthalmic Node',
+              isGuest: false,
+              createdAt: session.user.created_at || new Date().toISOString(),
+              avatarUrl: session.user.user_metadata?.avatar_url,
+            };
+            setCurrentUser(oauthUser);
+            setUser(oauthUser);
+            setActiveView('dashboard');
+          }
+        } else if (event === 'SIGNED_OUT') {
+          setCurrentUser(null);
+          setUser(null);
+          setUserScans([]);
+          setSelectedScan(null);
+          setActiveView('landing');
+        }
+      }
+    );
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
 
   // Fetch scans for current authenticated clinician / guest
   const loadScans = useCallback(async () => {
