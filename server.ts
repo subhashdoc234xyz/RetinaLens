@@ -21,6 +21,14 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Public auth configuration for frontend client
+app.get('/api/auth-config', (req, res) => {
+  res.json({
+    supabaseUrl: process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '',
+    supabaseAnonKey: process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '',
+  });
+});
+
 // Environment config status (safely reports connectivity without exposing raw secrets)
 app.get('/api/config-status', (req, res) => {
   const modelApiUrl = process.env.MODEL_API_URL || '';

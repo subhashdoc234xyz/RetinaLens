@@ -6,7 +6,7 @@ import {
   getUserScans,
   deleteUserScan,
 } from './lib/storage';
-import { getSupabase } from './lib/supabase';
+import { getSupabase, ensureSupabaseClient } from './lib/supabase';
 import { LandingHero } from './components/LandingHero';
 import { AuthView } from './components/AuthView';
 import { Sidebar } from './components/Sidebar';
@@ -30,45 +30,71 @@ export default function App() {
 
   // Listen for Supabase auth state changes (handles OAuth redirect callback)
   useEffect(() => {
-    const supabase = getSupabase();
-    if (!supabase) return;
+    let unsubscribe: (() => void) | undefined;
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (event === 'SIGNED_IN' && session?.user) {
-          // Only set user if we don't already have one (avoids overwriting on every token refresh)
-          const existing = getCurrentUser();
-          if (!existing || existing.id !== session.user.id) {
+    const setupAuth = async () => {
+      const supabase = await ensureSupabaseClient();
+      if (!supabase) return;
+
+      // Check current session immediately (in case redirect happened and session is already in memory or storage)
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const oauthUser: ClinicianUser = {
+          id: session.user.id,
+          email: session.user.email || '',
+          displayName:
+            session.user.user_metadata?.full_name ||
+            session.user.user_metadata?.name ||
+            session.user.email?.split('@')[0] ||
+            'Clinician',
+          clinicId: session.user.user_metadata?.clinic_id || 'RHU-04',
+          clinicName: 'Rural Health Ophthalmic Node',
+          isGuest: false,
+          createdAt: session.user.created_at || new Date().toISOString(),
+          avatarUrl: session.user.user_metadata?.avatar_url,
+        };
+        setCurrentUser(oauthUser);
+        setUser(oauthUser);
+        setActiveView('dashboard');
+      }
+
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(
+        async (event, currentSession) => {
+          if ((event === 'SIGNED_IN' || event === 'USER_UPDATED') && currentSession?.user) {
             const oauthUser: ClinicianUser = {
-              id: session.user.id,
-              email: session.user.email || '',
+              id: currentSession.user.id,
+              email: currentSession.user.email || '',
               displayName:
-                session.user.user_metadata?.full_name ||
-                session.user.user_metadata?.name ||
-                session.user.email?.split('@')[0] ||
+                currentSession.user.user_metadata?.full_name ||
+                currentSession.user.user_metadata?.name ||
+                currentSession.user.email?.split('@')[0] ||
                 'Clinician',
-              clinicId: session.user.user_metadata?.clinic_id || 'RHU-04',
+              clinicId: currentSession.user.user_metadata?.clinic_id || 'RHU-04',
               clinicName: 'Rural Health Ophthalmic Node',
               isGuest: false,
-              createdAt: session.user.created_at || new Date().toISOString(),
-              avatarUrl: session.user.user_metadata?.avatar_url,
+              createdAt: currentSession.user.created_at || new Date().toISOString(),
+              avatarUrl: currentSession.user.user_metadata?.avatar_url,
             };
             setCurrentUser(oauthUser);
             setUser(oauthUser);
             setActiveView('dashboard');
+          } else if (event === 'SIGNED_OUT') {
+            setCurrentUser(null);
+            setUser(null);
+            setUserScans([]);
+            setSelectedScan(null);
+            setActiveView('landing');
           }
-        } else if (event === 'SIGNED_OUT') {
-          setCurrentUser(null);
-          setUser(null);
-          setUserScans([]);
-          setSelectedScan(null);
-          setActiveView('landing');
         }
-      }
-    );
+      );
+
+      unsubscribe = () => subscription.unsubscribe();
+    };
+
+    setupAuth();
 
     return () => {
-      subscription.unsubscribe();
+      if (unsubscribe) unsubscribe();
     };
   }, []);
 
@@ -115,7 +141,15 @@ export default function App() {
     setActiveView('dashboard');
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      const supabase = getSupabase();
+      if (supabase) {
+        await supabase.auth.signOut();
+      }
+    } catch (err) {
+      console.warn('Signout error:', err);
+    }
     setCurrentUser(null);
     setUser(null);
     setUserScans([]);

@@ -6,7 +6,7 @@ import {
   createGuestUser,
   setCurrentUser,
 } from '../lib/storage';
-import { getSupabase } from '../lib/supabase';
+import { getSupabase, ensureSupabaseClient } from '../lib/supabase';
 import { IRIS_VISUAL_URL } from '../lib/constants';
 
 interface AuthViewProps {
@@ -99,22 +99,25 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess, onBackToLanding }
     setErrorMsg(null);
     setLoading(true);
     try {
-      const supabase = getSupabase();
+      const supabase = await ensureSupabaseClient();
       console.log('[RetinaLens] Google Auth: supabase client is', supabase ? 'AVAILABLE' : 'NULL');
       if (supabase) {
         console.log('[RetinaLens] Initiating Google OAuth redirect...');
         const { data, error } = await supabase.auth.signInWithOAuth({
           provider: 'google',
-          options: { redirectTo: window.location.origin },
+          options: {
+            redirectTo: window.location.origin,
+            queryParams: {
+              access_type: 'offline',
+              prompt: 'consent',
+            },
+          },
         });
         console.log('[RetinaLens] OAuth result:', { data, error });
         if (error) throw error;
-        // OAuth will redirect the browser — don't create a guest user here.
-        // The page will reload and onAuthStateChange in App.tsx will pick up the session.
         return;
       } else {
-        // Fallback demo guest mode if keys not yet in .env
-        setErrorMsg('Supabase is not configured. Check your VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env');
+        setErrorMsg('Supabase is not configured. Please check your Supabase environment variables.');
         console.error('[RetinaLens] Cannot use Google auth — Supabase client is not configured.');
       }
     } catch (err: any) {
