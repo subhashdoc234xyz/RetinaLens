@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { ClinicianUser, ScanRecord, ActiveView } from './types';
 import {
-  getCurrentUser,
   setCurrentUser,
   getUserScans,
   deleteUserScan,
@@ -16,7 +15,8 @@ import { HistoryView } from './components/HistoryView';
 import { ReportModal } from './components/ReportModal';
 
 export default function App() {
-  const [currentUser, setUser] = useState<ClinicianUser | null>(() => getCurrentUser());
+  // A dashboard session must be restored from Supabase Auth, never browser-only user data.
+  const [currentUser, setUser] = useState<ClinicianUser | null>(null);
   const [activeView, setActiveView] = useState<ActiveView>('landing');
   const [userScans, setUserScans] = useState<ScanRecord[]>([]);
   const [selectedScan, setSelectedScan] = useState<ScanRecord | null>(null);
@@ -136,11 +136,6 @@ export default function App() {
     }
   }, [currentUser]);
 
-  const handleLoginSuccess = (user: ClinicianUser) => {
-    setUser(user);
-    setActiveView('dashboard');
-  };
-
   const handleLogout = async () => {
     try {
       const supabase = getSupabase();
@@ -181,7 +176,6 @@ export default function App() {
   if (activeView === 'auth') {
     return (
       <AuthView
-        onSuccess={handleLoginSuccess}
         onBackToLanding={() => setActiveView('landing')}
       />
     );
