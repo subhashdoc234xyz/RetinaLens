@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ScanRecord } from '../types';
 import { DR_SEVERITY_LEVELS } from '../lib/constants';
 
@@ -9,7 +9,13 @@ interface ResultsViewProps {
 }
 
 export const ResultsView: React.FC<ResultsViewProps> = ({ scan, onBack, onOpenReportModal }) => {
-  const [showGradCam, setShowGradCam] = useState(true);
+  // A heatmap is meaningful only when it was returned by the inference model.
+  // Do not render a visual approximation over a patient's scan.
+  const hasGradCam = Boolean(scan.gradcamImageUrl);
+  const [showGradCam, setShowGradCam] = useState(hasGradCam);
+  useEffect(() => {
+    setShowGradCam(Boolean(scan.gradcamImageUrl));
+  }, [scan.id, scan.gradcamImageUrl]);
   const [intensity, setIntensity] = useState(85);
   const [zoom, setZoom] = useState(1.0);
   const [invertPolarity, setInvertPolarity] = useState(false);
@@ -67,13 +73,19 @@ export const ResultsView: React.FC<ResultsViewProps> = ({ scan, onBack, onOpenRe
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setShowGradCam(!showGradCam)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#303444] text-[#dee2f6] hover:bg-[#00d2ff]/20 transition-all cursor-pointer"
+                  onClick={() => hasGradCam && setShowGradCam(!showGradCam)}
+                  disabled={!hasGradCam}
+                  title={hasGradCam ? 'Show or hide the model-generated Grad-CAM heatmap' : 'This model did not return a Grad-CAM heatmap'}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-all ${
+                    hasGradCam
+                      ? 'bg-[#303444] text-[#dee2f6] hover:bg-[#00d2ff]/20 cursor-pointer'
+                      : 'bg-[#303444]/60 text-[#859399] cursor-not-allowed'
+                  }`}
                 >
                   <span className={`w-2 h-2 rounded-full ${showGradCam ? 'bg-[#00d2ff] shadow-[0_0_8px_#00d2ff]' : 'bg-[#859399]'}`} />
                   <span className="font-mono text-xs font-semibold">Grad-CAM Heatmap</span>
                   <span className={`font-mono text-[10px] px-1.5 py-0.5 rounded ml-1 ${showGradCam ? 'bg-[#00d2ff]/20 text-[#00d2ff]' : 'bg-[#3c494e] text-[#859399]'}`}>
-                    {showGradCam ? 'ON' : 'OFF'}
+                    {hasGradCam && showGradCam ? 'ON' : hasGradCam ? 'OFF' : 'UNAVAILABLE'}
                   </span>
                 </button>
 
@@ -154,15 +166,13 @@ export const ResultsView: React.FC<ResultsViewProps> = ({ scan, onBack, onOpenRe
                   <div className="absolute h-full w-px bg-[#a5e7ff]/20" />
                 </div>
 
-                {/* Grad-CAM Saliency Thermal Simulation Layer */}
-                {showGradCam && (
-                  <div
-                    className="absolute inset-0 pointer-events-none transition-opacity duration-300 mix-blend-screen"
-                    style={{
-                      opacity: intensity / 100,
-                      background:
-                        'radial-gradient(ellipse at 42% 35%, rgba(255, 100, 50, 0.75) 0%, rgba(255, 200, 0, 0.45) 25%, transparent 50%), radial-gradient(circle at 68% 32%, rgba(255, 60, 60, 0.8) 0%, rgba(255, 180, 20, 0.45) 28%, transparent 48%), radial-gradient(ellipse at 60% 65%, rgba(255, 50, 50, 0.7) 0%, rgba(255, 190, 0, 0.35) 30%, transparent 55%)',
-                    }}
+                {/* The API returns a real Grad-CAM PNG aligned to the input image. */}
+                {hasGradCam && showGradCam && (
+                  <img
+                    src={scan.gradcamImageUrl}
+                    alt="Model-generated Grad-CAM heatmap"
+                    className="absolute inset-0 w-full h-full object-contain pointer-events-none transition-opacity duration-300 mix-blend-screen"
+                    style={{ opacity: intensity / 100 }}
                   />
                 )}
 
