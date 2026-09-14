@@ -137,6 +137,12 @@ export async function getUserScans(userId: string): Promise<ScanRecord[]> {
             primaryAttributionSector: 'macula',
             featureWeights: [],
           },
+          liveOutput: row.live_output
+            ? {
+                ...row.live_output,
+                heatmap_image: await resolveStoredAssetUrl(supabase, row.live_output.heatmap_image) || undefined,
+              }
+            : undefined,
           modelSource: row.model_source || 'matlab_edge_node',
           clinicianNotes: row.clinician_notes || '',
         })));
@@ -174,6 +180,12 @@ export async function saveUserScan(scan: ScanRecord): Promise<void> {
         ...scan,
         imageUrl: storedImageUrl || scan.imageUrl,
         gradcamImageUrl: storedGradcamUrl,
+        liveOutput: scan.liveOutput
+          ? {
+              ...scan.liveOutput,
+              heatmap_image: storedGradcamUrl || scan.liveOutput.heatmap_image,
+            }
+          : undefined,
       };
 
       const { error } = await supabase.from('scans').insert({
@@ -191,6 +203,7 @@ export async function saveUserScan(scan: ScanRecord): Promise<void> {
         findings: persistedScan.findings,
         explainability_notes: persistedScan.explainabilityNotes,
         telemetry: persistedScan.telemetry,
+        live_output: persistedScan.liveOutput,
         model_source: persistedScan.modelSource,
         clinician_notes: persistedScan.clinicianNotes,
       });

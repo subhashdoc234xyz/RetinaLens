@@ -8,7 +8,99 @@ interface ResultsViewProps {
   onOpenReportModal: (scan: ScanRecord) => void;
 }
 
+const PipelineLiveView: React.FC<{ scan: ScanRecord }> = ({ scan }) => {
+  const [showHeatmap, setShowHeatmap] = useState(false);
+  const liveOutput = scan.liveOutput;
+  const heatmapImage = liveOutput?.heatmap_image;
+  const scoreEntries = Object.entries(liveOutput?.all_scores || {});
+
+  if (!liveOutput) {
+    return (
+      <div className="rounded-2xl border border-[#3c494e]/40 bg-[#161b2a] p-8 text-center shadow-xl">
+        <span className="material-symbols-outlined text-3xl text-[#859399]">data_object</span>
+        <p className="mt-3 font-mono text-sm text-[#bbc9cf]">Live output is not available for this scan.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-5">
+      <section className="overflow-hidden rounded-2xl border border-[#3c494e]/40 bg-[#161b2a] shadow-xl">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#3c494e]/30 bg-[#252a39]/80 px-5 py-3">
+          <span className="font-mono text-xs font-semibold uppercase tracking-wider text-[#a5e7ff]">Deployed pipeline image</span>
+          <label className="flex cursor-pointer items-center gap-2 rounded-full border border-[#3c494e]/40 bg-[#1a1f2e] px-3 py-1.5 font-mono text-xs text-[#dee2f6]">
+            <input
+              type="checkbox"
+              checked={showHeatmap}
+              onChange={(event) => setShowHeatmap(event.target.checked)}
+              className="h-3.5 w-3.5 accent-[#00d2ff]"
+            />
+            Show Grad-CAM Heatmap
+          </label>
+        </div>
+        <div className="relative flex aspect-[4/3] items-center justify-center bg-[#090e1c]">
+          <img src={scan.imageUrl} alt="Uploaded fundus image" className="h-full w-full object-contain" />
+          {showHeatmap && heatmapImage && (
+            <img
+              src={heatmapImage}
+              alt="Model-generated Grad-CAM heatmap"
+              className="pointer-events-none absolute inset-0 h-full w-full object-contain mix-blend-screen"
+            />
+          )}
+          {showHeatmap && !heatmapImage && (
+            <p className="absolute inset-x-5 bottom-5 rounded-lg border border-[#3c494e]/40 bg-[#161b2a]/95 px-4 py-3 text-center font-mono text-xs text-[#bbc9cf]">
+              Heatmap not yet available for this scan
+            </p>
+          )}
+        </div>
+      </section>
+
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="rounded-2xl border border-[#3c494e]/40 bg-[#1a1f2e] p-5 shadow-lg">
+          <span className="font-mono text-[11px] uppercase tracking-wider text-[#859399]">Severity</span>
+          <p className="mt-2 font-space text-lg font-semibold text-[#dee2f6]">{liveOutput.severity_label}</p>
+        </div>
+        <div className="rounded-2xl border border-[#3c494e]/40 bg-[#1a1f2e] p-5 shadow-lg">
+          <span className="font-mono text-[11px] uppercase tracking-wider text-[#859399]">Confidence</span>
+          <p className="mt-2 font-space text-lg font-semibold text-[#dee2f6]">{liveOutput.confidence}%</p>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-[#3c494e]/40 bg-[#1a1f2e] p-5 shadow-lg">
+        <h2 className="font-space text-sm font-semibold text-[#dee2f6]">All severity scores</h2>
+        {scoreEntries.length > 0 ? (
+          <div className="mt-4 flex flex-col gap-3">
+            {scoreEntries.map(([label, score]) => {
+              const percentage = Number(score);
+              return (
+                <div key={label} className="grid grid-cols-[minmax(0,1fr)_48px] items-center gap-3">
+                  <div>
+                    <div className="mb-1 flex justify-between gap-3 font-mono text-xs text-[#bbc9cf]">
+                      <span>{label}</span>
+                      <span className="text-[#a5e7ff]">{percentage}%</span>
+                    </div>
+                    <div className="h-2 overflow-hidden rounded-full bg-[#303444]">
+                      <div className="h-full rounded-full bg-gradient-to-r from-[#00d2ff] to-[#508eff]" style={{ width: `${Math.max(0, Math.min(100, percentage))}%` }} />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="mt-3 font-mono text-xs text-[#859399]">No all_scores values were returned for this scan.</p>
+        )}
+      </section>
+
+      <p className="pb-2 text-center font-mono text-xs text-[#859399]">
+        Live output from the deployed RetinaLens MATLAB pipeline (ONNX export).
+      </p>
+    </div>
+  );
+};
+
 export const ResultsView: React.FC<ResultsViewProps> = ({ scan, onBack, onOpenReportModal }) => {
+  const [viewMode, setViewMode] = useState<'concept' | 'pipeline'>('concept');
   // A heatmap is meaningful only when it was returned by the inference model.
   // Do not render a visual approximation over a patient's scan.
   const hasGradCam = Boolean(scan.gradcamImageUrl);
@@ -28,6 +120,25 @@ export const ResultsView: React.FC<ResultsViewProps> = ({ scan, onBack, onOpenRe
 
   return (
     <div className="flex flex-col w-full pb-10">
+      <div className="mb-5 flex w-fit rounded-full border border-[#3c494e]/40 bg-[#161b2a] p-1 shadow-lg">
+        <button
+          type="button"
+          onClick={() => setViewMode('concept')}
+          className={`rounded-full px-4 py-2 font-mono text-xs font-semibold transition-colors ${viewMode === 'concept' ? 'bg-[#00d2ff] text-[#090e1c]' : 'text-[#bbc9cf] hover:text-[#dee2f6]'}`}
+        >
+          Concept View
+        </button>
+        <button
+          type="button"
+          onClick={() => setViewMode('pipeline')}
+          className={`rounded-full px-4 py-2 font-mono text-xs font-semibold transition-colors ${viewMode === 'pipeline' ? 'bg-[#00d2ff] text-[#090e1c]' : 'text-[#bbc9cf] hover:text-[#dee2f6]'}`}
+        >
+          Pipeline View (Live)
+        </button>
+      </div>
+
+      {viewMode === 'concept' ? (
+        <>
       {/* Top Telemetry & Context Strip */}
       <div className="flex flex-wrap items-center justify-between gap-4 py-2 mb-4">
         <div className="flex items-center gap-3">
@@ -57,7 +168,7 @@ export const ResultsView: React.FC<ResultsViewProps> = ({ scan, onBack, onOpenRe
           </div>
           <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#161b2a] text-[#a5e7ff] border border-[#3c494e]/30 shadow-sm font-mono text-[11px]">
             <span className="material-symbols-outlined text-[16px]">cloud_done</span>
-            <span>HL7 FHIR Synced</span>
+            <span>HL7 FHIR Integration (Planned)</span>
           </div>
         </div>
       </div>
@@ -554,7 +665,7 @@ export const ResultsView: React.FC<ResultsViewProps> = ({ scan, onBack, onOpenRe
               <div className="flex items-center gap-3 font-mono text-xs text-[#859399]">
                 <span className="flex items-center gap-1">
                   <span className="material-symbols-outlined text-[15px] text-[#00d2ff]">verified</span>
-                  ISO 13485 Clinical Software Validated
+                  ISO 13485 Alignment (Planned)
                 </span>
                 <span>•</span>
                 <span>Dataset: EyePACS + Messidor-2 Calibrated</span>
@@ -616,6 +727,10 @@ export const ResultsView: React.FC<ResultsViewProps> = ({ scan, onBack, onOpenRe
           </div>
         )}
       </div>
+        </>
+      ) : (
+        <PipelineLiveView scan={scan} />
+      )}
     </div>
   );
 };

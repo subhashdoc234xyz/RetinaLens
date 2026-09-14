@@ -138,10 +138,14 @@ CREATE TABLE IF NOT EXISTS scans (
   findings                JSONB NOT NULL DEFAULT '[]'::JSONB,
   explainability_notes    TEXT DEFAULT '',
   telemetry               JSONB NOT NULL DEFAULT '{}'::JSONB,
+  live_output             JSONB,
   model_source            TEXT DEFAULT 'offline_heuristic',
   clinician_notes         TEXT DEFAULT '',
   created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Supports existing projects created before the Pipeline View was introduced.
+ALTER TABLE scans ADD COLUMN IF NOT EXISTS live_output JSONB;
 
 -- Indexes for common query patterns
 CREATE INDEX IF NOT EXISTS idx_scans_user_id ON scans(user_id);

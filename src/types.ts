@@ -35,6 +35,14 @@ export interface GradCamTelemetry {
   }[];
 }
 
+/** Exact fields retained from the deployed /predict response for Pipeline View. */
+export interface LivePipelineOutput {
+  severity_label: string;
+  confidence: number;
+  all_scores: Record<string, number>;
+  heatmap_image?: string;
+}
+
 export interface ScanRecord {
   id: string;
   userId: string;
@@ -51,6 +59,7 @@ export interface ScanRecord {
   findings: LesionFinding[];
   explainabilityNotes: string;
   telemetry: GradCamTelemetry;
+  liveOutput?: LivePipelineOutput;
   modelSource: 'matlab_edge_node' | 'tflite_int8' | 'gemini_clinical_core' | 'offline_heuristic';
   clinicianNotes?: string;
 }

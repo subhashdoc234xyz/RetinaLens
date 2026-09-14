@@ -149,6 +149,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         findings,
         explainabilityNotes: explainability,
         telemetry,
+        liveOutput: data.liveOutput,
         modelSource,
       };
 

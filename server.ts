@@ -89,12 +89,18 @@ app.post('/api/analyze-scan', async (req, res) => {
         }
 
         const modelResult = await response.json();
+        const liveOutput = {
+          severity_label: modelResult.severity_label ?? modelResult.drSeverityLabel ?? 'Unavailable',
+          confidence: Number(modelResult.confidence ?? modelResult.confidenceScore ?? 0),
+          all_scores: modelResult.all_scores ?? modelResult.allScores ?? {},
+          heatmap_image: modelResult.heatmap_image ?? modelResult.gradcamImageUrl ?? undefined,
+        };
         return res.json({
           status: 'success',
           source: 'matlab_edge_node',
           drSeverityLevel: modelResult.drSeverityLevel ?? 0,
-          drSeverityLabel: modelResult.drSeverityLabel ?? 'Level 0 — No DR',
-          confidenceScore: modelResult.confidenceScore ?? 94.5,
+          drSeverityLabel: modelResult.drSeverityLabel ?? liveOutput.severity_label,
+          confidenceScore: modelResult.confidenceScore ?? liveOutput.confidence,
           findings: modelResult.findings ?? [],
           explainabilityNotes: modelResult.explainabilityNotes ?? 'Inference completed by external MATLAB model.',
           telemetry: modelResult.telemetry ?? {
@@ -102,7 +108,8 @@ app.post('/api/analyze-scan', async (req, res) => {
             primaryAttributionSector: 'macula',
             featureWeights: [],
           },
-          gradcamImageUrl: modelResult.gradcamImageUrl || null,
+          gradcamImageUrl: liveOutput.heatmap_image || null,
+          liveOutput,
         });
       } catch (externalErr: any) {
         console.error('[RetinaLens] External model node failed:', externalErr.message);
