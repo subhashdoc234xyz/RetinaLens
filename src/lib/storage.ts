@@ -3,6 +3,7 @@ import { getSupabase } from './supabase';
 
 const CURRENT_USER_KEY = 'retinalens_current_user';
 const USERS_DB_KEY = 'retinalens_registered_users';
+const FUNDUS_IMAGES_BUCKET = 'fundus-images';
 
 export function getCurrentUser(): ClinicianUser | null {
   if (typeof window === 'undefined') return null;
@@ -33,6 +34,78 @@ function getSearchHistoryKey(userId: string): string {
   return `retinalens_search_${userId}`;
 }
 
+/**
+ * localStorage is deliberately limited to a few MB and is not suitable for
+ * Base64 fundus images or Grad-CAM PNGs. Keep the offline cache to metadata;
+ * the full scan is persisted through Supabase when it is configured.
+ */
+function toLocalCacheScan(scan: ScanRecord): ScanRecord {
+  return {
+    ...scan,
+    imageUrl: '',
+    gradcamImageUrl: undefined,
+  };
+}
+
+function saveLocalScanCache(userId: string, scans: ScanRecord[]): void {
+  const key = getScansStorageKey(userId);
+  const compactScans = scans.map(toLocalCacheScan);
+
+  try {
+    localStorage.setItem(key, JSON.stringify(compactScans));
+  } catch (error) {
+    // Remove legacy entries that may contain oversized Base64 images and
+    // retry once with the compact data.
+    if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+      localStorage.removeItem(key);
+      localStorage.setItem(key, JSON.stringify(compactScans));
+      return;
+    }
+    throw error;
+  }
+}
+
+function isDataUrl(value: string | undefined): boolean {
+  return Boolean(value?.startsWith('data:'));
+}
+
+async function uploadDataUrl(
+  supabase: NonNullable<ReturnType<typeof getSupabase>>,
+  dataUrl: string | undefined,
+  path: string,
+): Promise<string | undefined> {
+  if (!dataUrl || !isDataUrl(dataUrl)) return dataUrl;
+
+  const response = await fetch(dataUrl);
+  const blob = await response.blob();
+  const { error } = await supabase.storage
+    .from(FUNDUS_IMAGES_BUCKET)
+    .upload(path, blob, {
+      contentType: blob.type || 'image/png',
+      upsert: true,
+    });
+
+  if (error) throw error;
+  return path;
+}
+
+async function resolveStoredAssetUrl(
+  supabase: NonNullable<ReturnType<typeof getSupabase>>,
+  value: string | undefined,
+): Promise<string> {
+  if (!value || isDataUrl(value) || value.startsWith('http')) return value || '';
+
+  const { data, error } = await supabase.storage
+    .from(FUNDUS_IMAGES_BUCKET)
+    .createSignedUrl(value, 60 * 60);
+
+  if (error || !data?.signedUrl) {
+    console.warn('Could not create signed URL for stored scan image:', error);
+    return '';
+  }
+  return data.signedUrl;
+}
+
 export async function getUserScans(userId: string): Promise<ScanRecord[]> {
   const supabase = getSupabase();
   if (supabase) {
@@ -44,15 +117,15 @@ export async function getUserScans(userId: string): Promise<ScanRecord[]> {
         .order('uploaded_at', { ascending: false });
 
       if (!error && data) {
-        return data.map((row: any) => ({
+        return await Promise.all(data.map(async (row: any) => ({
           id: row.id,
           userId: row.user_id,
           patientId: row.patient_id,
           patientAge: row.patient_age,
           eyeSide: row.eye_side,
           pupilDilationStatus: row.pupil_dilation_status || 'Dilated',
-          imageUrl: row.image_url,
-          gradcamImageUrl: row.gradcam_image_url,
+          imageUrl: await resolveStoredAssetUrl(supabase, row.image_url),
+          gradcamImageUrl: await resolveStoredAssetUrl(supabase, row.gradcam_image_url) || undefined,
           uploadedAt: row.uploaded_at,
           drSeverityLevel: row.dr_severity_level,
           drSeverityLabel: row.dr_severity_label,
@@ -66,7 +139,7 @@ export async function getUserScans(userId: string): Promise<ScanRecord[]> {
           },
           modelSource: row.model_source || 'matlab_edge_node',
           clinicianNotes: row.clinician_notes || '',
-        }));
+        })));
       }
     } catch (err) {
       console.warn('Supabase fetch failed, falling back to isolated local vault:', err);
@@ -86,26 +159,42 @@ export async function getUserScans(userId: string): Promise<ScanRecord[]> {
 
 export async function saveUserScan(scan: ScanRecord): Promise<void> {
   const supabase = getSupabase();
+  let persistedScan = scan;
+
   if (supabase) {
     try {
-      await supabase.from('scans').insert({
-        id: scan.id,
-        user_id: scan.userId,
-        patient_id: scan.patientId,
-        eye_side: scan.eyeSide,
-        pupil_dilation_status: scan.pupilDilationStatus,
-        image_url: scan.imageUrl,
-        gradcam_image_url: scan.gradcamImageUrl,
-        uploaded_at: scan.uploadedAt,
-        dr_severity_level: scan.drSeverityLevel,
-        dr_severity_label: scan.drSeverityLabel,
-        confidence_score: scan.confidenceScore,
-        findings: scan.findings,
-        explainability_notes: scan.explainabilityNotes,
-        telemetry: scan.telemetry,
-        model_source: scan.modelSource,
-        clinician_notes: scan.clinicianNotes,
+      const imagePath = `${scan.userId}/${scan.id}-fundus.png`;
+      const gradcamPath = `${scan.userId}/${scan.id}-gradcam.png`;
+      const [storedImageUrl, storedGradcamUrl] = await Promise.all([
+        uploadDataUrl(supabase, scan.imageUrl, imagePath),
+        uploadDataUrl(supabase, scan.gradcamImageUrl, gradcamPath),
+      ]);
+
+      persistedScan = {
+        ...scan,
+        imageUrl: storedImageUrl || scan.imageUrl,
+        gradcamImageUrl: storedGradcamUrl,
+      };
+
+      const { error } = await supabase.from('scans').insert({
+        id: persistedScan.id,
+        user_id: persistedScan.userId,
+        patient_id: persistedScan.patientId,
+        eye_side: persistedScan.eyeSide,
+        pupil_dilation_status: persistedScan.pupilDilationStatus,
+        image_url: persistedScan.imageUrl,
+        gradcam_image_url: persistedScan.gradcamImageUrl,
+        uploaded_at: persistedScan.uploadedAt,
+        dr_severity_level: persistedScan.drSeverityLevel,
+        dr_severity_label: persistedScan.drSeverityLabel,
+        confidence_score: persistedScan.confidenceScore,
+        findings: persistedScan.findings,
+        explainability_notes: persistedScan.explainabilityNotes,
+        telemetry: persistedScan.telemetry,
+        model_source: persistedScan.modelSource,
+        clinician_notes: persistedScan.clinicianNotes,
       });
+      if (error) throw error;
     } catch (err) {
       console.warn('Supabase scan save error:', err);
     }
@@ -114,8 +203,8 @@ export async function saveUserScan(scan: ScanRecord): Promise<void> {
   // Always keep isolated per-user local copy as offline-first cache
   if (typeof window === 'undefined') return;
   const existing = await getUserScans(scan.userId);
-  const updated = [scan, ...existing.filter((s) => s.id !== scan.id)];
-  localStorage.setItem(getScansStorageKey(scan.userId), JSON.stringify(updated));
+  const updated = [persistedScan, ...existing.filter((s) => s.id !== scan.id)];
+  saveLocalScanCache(scan.userId, updated);
 }
 
 export async function deleteUserScan(userId: string, scanId: string): Promise<void> {
@@ -131,7 +220,7 @@ export async function deleteUserScan(userId: string, scanId: string): Promise<vo
   if (typeof window === 'undefined') return;
   const existing = await getUserScans(userId);
   const updated = existing.filter((s) => s.id !== scanId);
-  localStorage.setItem(getScansStorageKey(userId), JSON.stringify(updated));
+  saveLocalScanCache(userId, updated);
 }
 
 export function getUserSearchHistory(userId: string): string[] {
